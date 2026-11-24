@@ -55,7 +55,9 @@ class EventManager {
                 guard modifierRawValue != 256 || keyCode == 57 else { return }
                 AudioManager.playSound(keyCode: keyCode)
             case .keyUp:
-                activeKeys.remove(keyCode)
+                if activeKeys.remove(keyCode) != nil {
+                    AudioManager.playKeyUpSound(keyCode: keyCode)
+                }
             default:
                 break
             }

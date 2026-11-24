@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build & Verify Universal macOS App
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check script syntax and whitespace
+        run: |
+          bash -n scripts/build-and-install.sh
+          git diff --check
+
+      - name: Build universal Release packages
+        run: ./scripts/build-and-install.sh --universal --package
+
+      - name: Verify universal architectures and signature
+        run: |
+          lipo -info /tmp/click-dd/Build/Products/Release/click.app/Contents/MacOS/click
+          codesign --verify --deep --strict --verbose=2 /tmp/click-dd/Build/Products/Release/click.app
+          cat dist/SHA256SUMS.txt
+
+      - name: Upload installer packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: Click-macOS-Universal
+          path: |
+            dist/Click-*.dmg
+            dist/Click-*.zip
+            dist/SHA256SUMS.txt
