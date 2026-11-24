@@ -11,9 +11,11 @@ class EventManager {
     private static var eventMonitor: Any?
     private static var localEventMonitor: Any?
     private static var activeKeys: Set<UInt16> = []
-    private static let soundQueue = DispatchQueue(label: "com.pruizlezcano.click.soundQueue")
+    private static let eventQueue = DispatchQueue(label: "com.pruizlezcano.click.eventQueue", qos: .userInteractive)
 
     static func setupEventMonitors() {
+        removeEventMonitors()
+
         // Global monitor
         eventMonitor = NSEvent.addGlobalMonitorForEvents(
             matching: [.keyDown, .keyUp, .flagsChanged],
@@ -37,19 +39,23 @@ class EventManager {
     }
 
     private static func handleEvent(event: NSEvent) {
-        soundQueue.async {
-            switch event.type {
+        let type = event.type
+        let keyCode = event.keyCode
+        let modifierRawValue = event.modifierFlags.rawValue
+
+        eventQueue.async {
+            switch type {
             case .keyDown:
-                if !activeKeys.contains(event.keyCode) {
-                    activeKeys.insert(event.keyCode)
-                    AudioManager.playSound(keyCode: event.keyCode)
+                if !activeKeys.contains(keyCode) {
+                    activeKeys.insert(keyCode)
+                    AudioManager.playSound(keyCode: keyCode)
                 }
             case .flagsChanged:
                 // Return if key released (not caps lock)
-                guard event.modifierFlags.rawValue != 256 || event.keyCode == 57 else { return }
-                AudioManager.playSound(keyCode: event.keyCode)
+                guard modifierRawValue != 256 || keyCode == 57 else { return }
+                AudioManager.playSound(keyCode: keyCode)
             case .keyUp:
-                activeKeys.remove(event.keyCode)
+                activeKeys.remove(keyCode)
             default:
                 break
             }
@@ -64,6 +70,9 @@ class EventManager {
         if let monitor = localEventMonitor {
             NSEvent.removeMonitor(monitor)
             localEventMonitor = nil
+        }
+        eventQueue.async {
+            activeKeys.removeAll()
         }
     }
 }

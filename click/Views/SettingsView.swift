@@ -12,8 +12,6 @@ struct SettingsView: View {
     @EnvironmentObject var appState: AppState
     @Default(.launchAtLogin) var launchAtLogin
     @Default(.startMinimized) var startMinimized
-    @Default(.overrideVolume) var overrideVolume
-    @Default(.customVolume) var customVolume
     @Default(.showNotifications) var showNotifications
 
     private var cornerRadius: CGFloat {
@@ -70,9 +68,6 @@ struct SettingsView: View {
         VStack {
             VStack(spacing: 0) {
                 SettingsToggle("Override volume presets", isOn: $appState.overrideVolume)
-                    .onChange(of: appState.overrideVolume) { _, newValue in
-                        overrideVolume = newValue
-                    }
                 Divider()
                     .padding(.horizontal, 8)
                 SettingsSlider(
@@ -84,9 +79,6 @@ struct SettingsView: View {
                     leftIcon: "speaker.fill",
                     rightIcon: "speaker.wave.3.fill"
                 )
-                .onChange(of: appState.customVolume) { _, newValue in
-                    customVolume = newValue
-                }
                 Divider()
                     .padding(.horizontal, 8)
                 HStack {

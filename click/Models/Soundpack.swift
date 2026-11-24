@@ -20,8 +20,38 @@ enum Soundpack: String, CaseIterable, Defaults.Serializable {
     case egOreo = "eg-oreo"
     case nkCream = "nk-cream"
 
+    private static let cacheLock = NSLock()
+    private static var cache: [Soundpack: SoundpackObject] = [:]
+
     var soundpack: SoundpackObject? {
-        loadJSON(rawValue)
+        Self.cacheLock.lock()
+        if let cached = Self.cache[self] {
+            Self.cacheLock.unlock()
+            return cached
+        }
+        Self.cacheLock.unlock()
+
+        guard let loaded = loadJSON(rawValue) else {
+            return nil
+        }
+
+        Self.cacheLock.lock()
+        Self.cache[self] = loaded
+        Self.cacheLock.unlock()
+        return loaded
+    }
+
+    func soundSlice(for keyCode: UInt16) -> (startMs: Int, durationMs: Int)? {
+        guard
+            let rawEntry = soundpack?.defines[String(keyCode)],
+            let values = rawEntry,
+            values.count >= 2,
+            values[0] >= 0,
+            values[1] > 0
+        else {
+            return nil
+        }
+        return (startMs: values[0], durationMs: values[1])
     }
 }
 

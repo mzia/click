@@ -5,47 +5,14 @@
 //  Created by Pablo Ruiz on 21/8/24.
 //
 
-import Combine
 import SwiftUI
-
-class ViewModel: ObservableObject {
-    @Published var permissionsGranted = PermissionsManager.getStatus()
-    @Published var accessibilityChecker: Publishers.Autoconnect<Timer.TimerPublisher> = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
-    @Published var accessibilityChecks: Int = 0
-
-    func beginAccessibilityAccessRequest() {
-        accessibilityChecker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
-        accessibilityChecks = 0
-    }
-
-    func refreshPermissions() {
-        accessibilityChecks += 1
-        let isGranted = PermissionsManager.getStatus()
-        if isGranted != permissionsGranted {
-            withAnimation {
-                permissionsGranted = isGranted
-            }
-            if isGranted {
-                AppState.shared.startApp?()
-            }
-            if !isGranted {
-                beginAccessibilityAccessRequest()
-                EventManager.removeEventMonitors()
-            }
-        }
-        if isGranted || accessibilityChecks > 60 {
-            accessibilityChecker.upstream.connect().cancel()
-        }
-    }
-}
 
 struct ContentView: View {
     @EnvironmentObject var appState: AppState
-    @StateObject var model = ViewModel()
 
     var body: some View {
         VStack {
-            if !model.permissionsGranted {
+            if !appState.permissionsGranted {
                 PermissionsView()
             } else {
                 HStack {
@@ -54,32 +21,17 @@ struct ContentView: View {
                             .font(.title.bold())
                             .padding()
 
-                        if model.permissionsGranted {
-                            HStack {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundColor(.green)
-                                Text("Permissions granted")
-                            }
-                            .padding(10)
-                            .background(RoundedRectangle(cornerRadius: 9).stroke(Color.secondary, lineWidth: 0.5)
-                                .fill(.secondary.opacity(0.1))
-                            )
-                        } else {
-                            Button(action: {
-                                model.beginAccessibilityAccessRequest()
-                            }, label: {
-                                HStack {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundColor(.red)
-                                    Text("Permissions not granted")
-                                }
-                                .padding(10)
-                                .background(RoundedRectangle(cornerRadius: 9).stroke(Color.secondary, lineWidth: 0.5)
-                                    .fill(.secondary.opacity(0.1))
-                                )
-                            })
-                            .buttonStyle(.plain)
+                        HStack {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(.green)
+                            Text("Permissions granted")
                         }
+                        .padding(10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 9)
+                                .stroke(Color.secondary, lineWidth: 0.5)
+                                .fill(.secondary.opacity(0.1))
+                        )
 
                         Text("Choose your switch set")
                             .foregroundStyle(.secondary)
@@ -152,8 +104,8 @@ struct ContentView: View {
         }
         .padding([.horizontal, .bottom])
         .frame(width: 650, height: 400)
-        .onReceive(model.accessibilityChecker) { _ in
-            model.refreshPermissions()
+        .onAppear {
+            appState.refreshPermissions()
         }
     }
 }
