@@ -18,34 +18,63 @@ class AudioManager {
         let buffers: [UInt16: AVAudioPCMBuffer]
     }
 
-    private static let playerPoolSize = 16
+    private struct PlayerVoice {
+        let player: AVAudioPlayerNode
+        let timePitch: AVAudioUnitTimePitch
+    }
+
+    private static let playerPoolSize = 12
     private static let audioQueue = DispatchQueue(label: "com.pruizlezcano.click.audioQueue", qos: .userInteractive)
     private static let previewQueue = DispatchQueue(label: "com.pruizlezcano.click.previewQueue", qos: .userInitiated)
 
     private static var engine: AVAudioEngine?
     private static var eqNode: AVAudioUnitEQ?
-    private static var playerNodes: [AVAudioPlayerNode] = []
+    private static var voices: [PlayerVoice] = []
     private static var configuredFormat: AVAudioFormat?
-    private static var nextNodeIndex = 0
+    private static var nextVoiceIndex = 0
 
     private static var activePack: LoadedSoundpack?
-    private static var decodedCache: [Soundpack: LoadedSoundpack] = [:]
+    private static var decodedBuiltInCache: [Soundpack: LoadedSoundpack] = [:]
+    private static var decodedCustomCache: [String: LoadedSoundpack] = [:]
 
     private static var currentVolume: Float = 1.0
-    private static var currentOutputDevice: OutputDevice = .any
+    private static var currentOutputDeviceUID = ""
+    private static var soundVariationEnabled = false
+    private static var keyUpSoundEnabled = false
+    private static var isAutoMuted = false
+
     private static var configObserver: NSObjectProtocol?
     private static var previewToken = UUID()
 
-    static func updatePlaybackSettings(volume: Float, outputDevice: OutputDevice) {
+    static func updatePlaybackSettings(
+        volume: Float,
+        outputDeviceUID: String,
+        enableSoundVariation: Bool,
+        enableKeyUpSound: Bool
+    ) {
         audioQueue.async {
             currentVolume = max(0, volume)
-            let deviceChanged = currentOutputDevice != outputDevice
-            currentOutputDevice = outputDevice
+            let deviceChanged = currentOutputDeviceUID != outputDeviceUID
+            currentOutputDeviceUID = outputDeviceUID
+            soundVariationEnabled = enableSoundVariation
+            keyUpSoundEnabled = enableKeyUpSound
 
             applyGain()
             if deviceChanged, engine != nil {
-                applyOutputDevice(outputDevice)
+                applyOutputDevice(uid: outputDeviceUID)
             }
+        }
+    }
+
+    static func setAutoMuted(_ muted: Bool) {
+        audioQueue.async {
+            isAutoMuted = muted
+        }
+    }
+
+    static func invalidateCustomPackCache(id: String) {
+        audioQueue.async {
+            decodedCustomCache.removeValue(forKey: id)
         }
     }
 
@@ -63,10 +92,37 @@ class AudioManager {
 
             if saveState {
                 DispatchQueue.main.async {
+                    if AppState.shared.selectedCustomSoundpackID != nil {
+                        AppState.shared.selectedCustomSoundpackID = nil
+                    }
                     if AppState.shared.soundpack != soundPack {
                         AppState.shared.soundpack = soundPack
                     }
                     Defaults[.soundpack] = soundPack
+                    Defaults[.selectedCustomSoundpackID] = nil
+                }
+            }
+        }
+    }
+
+    static func loadCustomSoundPack(_ customPack: CustomSoundpackInfo, saveState: Bool = true) {
+        print("Loading custom soundpack: \(customPack.name)")
+
+        loadBuffers(for: customPack) { loaded in
+            guard let loaded else { return }
+
+            audioQueue.async {
+                activePack = loaded
+                configureEngineIfNeeded(for: loaded.format)
+                print("Custom soundpack loaded successfully")
+            }
+
+            if saveState {
+                DispatchQueue.main.async {
+                    if AppState.shared.selectedCustomSoundpackID != customPack.id {
+                        AppState.shared.selectedCustomSoundpackID = customPack.id
+                    }
+                    Defaults[.selectedCustomSoundpackID] = customPack.id
                 }
             }
         }
@@ -74,8 +130,15 @@ class AudioManager {
 
     static func playSound(keyCode: UInt16) {
         audioQueue.async {
-            guard let pack = activePack else { return }
-            playBuffer(for: keyCode, from: pack)
+            guard !isAutoMuted, let pack = activePack else { return }
+            playBuffer(for: keyCode, from: pack, isKeyUp: false)
+        }
+    }
+
+    static func playKeyUpSound(keyCode: UInt16) {
+        audioQueue.async {
+            guard !isAutoMuted, keyUpSoundEnabled, let pack = activePack else { return }
+            playBuffer(for: keyCode, from: pack, isKeyUp: true)
         }
     }
 
@@ -87,23 +150,38 @@ class AudioManager {
 
         loadBuffers(for: soundPack) { loaded in
             guard let loaded else { return }
+            runPreviewSequence(using: loaded, token: token)
+        }
+    }
 
-            previewQueue.async {
-                let keyCodes: [UInt16] = [56, 4, 14, 37, 37, 31, 49, 56, 13, 31, 15, 37, 2, 56, 18] // Hello World!
-                let waitTimes: [TimeInterval] = [
-                    0.17, 0.28, 0.22, 0.15, 0.16, 0.16, 0.2, 0.1,
-                    0.13, 0.17, 0.2, 0.23, 0.2, 0.21, 0.1
-                ]
+    static func previewCustomSoundPack(_ customPack: CustomSoundpackInfo) {
+        let token = UUID()
+        audioQueue.async {
+            previewToken = token
+        }
 
-                for index in 0 ..< keyCodes.count {
-                    let isCancelled = audioQueue.sync { previewToken != token }
-                    if isCancelled { break }
+        loadBuffers(for: customPack) { loaded in
+            guard let loaded else { return }
+            runPreviewSequence(using: loaded, token: token)
+        }
+    }
 
-                    audioQueue.async {
-                        playBuffer(for: keyCodes[index], from: loaded)
-                    }
-                    Thread.sleep(forTimeInterval: waitTimes[index])
+    private static func runPreviewSequence(using loaded: LoadedSoundpack, token: UUID) {
+        previewQueue.async {
+            let keyCodes: [UInt16] = [56, 4, 14, 37, 37, 31, 49, 56, 13, 31, 15, 37, 2, 56, 18] // Hello World!
+            let waitTimes: [TimeInterval] = [
+                0.17, 0.28, 0.22, 0.15, 0.16, 0.16, 0.2, 0.1,
+                0.13, 0.17, 0.2, 0.23, 0.2, 0.21, 0.1
+            ]
+
+            for index in 0 ..< keyCodes.count {
+                let isCancelled = audioQueue.sync { previewToken != token }
+                if isCancelled { break }
+
+                audioQueue.async {
+                    playBuffer(for: keyCodes[index], from: loaded, isKeyUp: false)
                 }
+                Thread.sleep(forTimeInterval: waitTimes[index])
             }
         }
     }
@@ -112,7 +190,7 @@ class AudioManager {
 
     private static func loadBuffers(for soundPack: Soundpack, completion: @escaping (LoadedSoundpack?) -> Void) {
         audioQueue.async {
-            if let cached = decodedCache[soundPack] {
+            if let cached = decodedBuiltInCache[soundPack] {
                 completion(cached)
                 return
             }
@@ -129,22 +207,21 @@ class AudioManager {
                 return
             }
 
-            let decoder = OGGDecoder()
-            decoder.decode(soundURL) { savedWavUrl in
-                guard let savedWavUrl else {
-                    print("Failed to decode OGG file")
+            decodeAudioToReadableURL(soundURL) { decodedURL, shouldDelete in
+                guard let decodedURL else {
                     completion(nil)
                     return
                 }
-
                 defer {
-                    try? FileManager.default.removeItem(at: savedWavUrl)
+                    if shouldDelete {
+                        try? FileManager.default.removeItem(at: decodedURL)
+                    }
                 }
 
                 do {
-                    let loaded = try buildLoadedSoundpack(from: savedWavUrl, defines: soundpackData.defines)
+                    let loaded = try buildSingleFileLoadedSoundpack(from: decodedURL, defines: soundpackData.defines)
                     audioQueue.async {
-                        decodedCache[soundPack] = loaded
+                        decodedBuiltInCache[soundPack] = loaded
                         completion(loaded)
                     }
                 } catch {
@@ -155,11 +232,108 @@ class AudioManager {
         }
     }
 
-    private static func buildLoadedSoundpack(
-        from wavURL: URL,
+    private static func loadBuffers(
+        for customPack: CustomSoundpackInfo,
+        completion: @escaping (LoadedSoundpack?) -> Void
+    ) {
+        audioQueue.async {
+            if let cached = decodedCustomCache[customPack.id] {
+                completion(cached)
+                return
+            }
+
+            if let singleAudio = customPack.singleAudioFileName, let defines = customPack.defines {
+                guard let audioURL = CustomSoundpackManager.shared.audioFileURL(for: customPack, fileName: singleAudio) else {
+                    print("Custom soundpack audio not found: \(singleAudio)")
+                    completion(nil)
+                    return
+                }
+
+                decodeAudioToReadableURL(audioURL) { decodedURL, shouldDelete in
+                    guard let decodedURL else {
+                        completion(nil)
+                        return
+                    }
+                    defer {
+                        if shouldDelete {
+                            try? FileManager.default.removeItem(at: decodedURL)
+                        }
+                    }
+
+                    do {
+                        let loaded = try buildSingleFileLoadedSoundpack(from: decodedURL, defines: defines)
+                        audioQueue.async {
+                            decodedCustomCache[customPack.id] = loaded
+                            completion(loaded)
+                        }
+                    } catch {
+                        print("Failed to build custom soundpack buffers: \(error.localizedDescription)")
+                        completion(nil)
+                    }
+                }
+                return
+            }
+
+            if let multiFiles = customPack.multiKeyAudioFiles {
+                DispatchQueue.global(qos: .userInitiated).async {
+                    do {
+                        let loaded = try buildMultiFileLoadedSoundpack(for: customPack, keyFiles: multiFiles)
+                        audioQueue.async {
+                            decodedCustomCache[customPack.id] = loaded
+                            completion(loaded)
+                        }
+                    } catch {
+                        print("Failed to build multi-file custom soundpack: \(error.localizedDescription)")
+                        completion(nil)
+                    }
+                }
+                return
+            }
+
+            completion(nil)
+        }
+    }
+
+    private static func decodeAudioToReadableURL(
+        _ sourceURL: URL,
+        completion: @escaping (URL?, Bool) -> Void
+    ) {
+        if sourceURL.pathExtension.lowercased() == "ogg" {
+            let decoder = OGGDecoder()
+            decoder.decode(sourceURL) { savedWavUrl in
+                if let savedWavUrl {
+                    completion(savedWavUrl, true)
+                } else {
+                    print("Failed to decode OGG file: \(sourceURL.lastPathComponent)")
+                    completion(nil, false)
+                }
+            }
+        } else {
+            completion(sourceURL, false)
+        }
+    }
+
+    private static func decodeAudioSync(_ sourceURL: URL) -> (url: URL, shouldDelete: Bool)? {
+        if sourceURL.pathExtension.lowercased() != "ogg" {
+            return (sourceURL, false)
+        }
+        let semaphore = DispatchSemaphore(value: 0)
+        var result: URL?
+        let decoder = OGGDecoder()
+        decoder.decode(sourceURL) { savedWavUrl in
+            result = savedWavUrl
+            semaphore.signal()
+        }
+        semaphore.wait()
+        guard let result else { return nil }
+        return (result, true)
+    }
+
+    private static func buildSingleFileLoadedSoundpack(
+        from audioURL: URL,
         defines: [String: [Int]?]
     ) throws -> LoadedSoundpack {
-        let audioFile = try AVAudioFile(forReading: wavURL)
+        let audioFile = try AVAudioFile(forReading: audioURL)
         let format = audioFile.processingFormat
         let totalFrames = AVAudioFrameCount(audioFile.length)
 
@@ -210,6 +384,84 @@ class AudioManager {
         return LoadedSoundpack(format: format, buffers: slicedBuffers)
     }
 
+    private static func buildMultiFileLoadedSoundpack(
+        for customPack: CustomSoundpackInfo,
+        keyFiles: [String: String]
+    ) throws -> LoadedSoundpack {
+        let uniqueFileNames = Set(keyFiles.values)
+        var fileBuffers: [String: AVAudioPCMBuffer] = [:]
+        var targetFormat: AVAudioFormat?
+
+        for fileName in uniqueFileNames {
+            guard let sourceURL = CustomSoundpackManager.shared.audioFileURL(for: customPack, fileName: fileName),
+                  let decoded = decodeAudioSync(sourceURL)
+            else {
+                continue
+            }
+            defer {
+                if decoded.shouldDelete {
+                    try? FileManager.default.removeItem(at: decoded.url)
+                }
+            }
+
+            let audioFile = try AVAudioFile(forReading: decoded.url)
+            let fileFormat = audioFile.processingFormat
+            let frameCount = AVAudioFrameCount(audioFile.length)
+            guard frameCount > 0,
+                  let buffer = AVAudioPCMBuffer(pcmFormat: fileFormat, frameCapacity: frameCount)
+            else {
+                continue
+            }
+            try audioFile.read(into: buffer)
+
+            if targetFormat == nil {
+                targetFormat = fileFormat
+            }
+
+            if let expected = targetFormat, fileFormat != expected {
+                if let converted = convertBuffer(buffer, to: expected) {
+                    fileBuffers[fileName] = converted
+                }
+            } else {
+                fileBuffers[fileName] = buffer
+            }
+        }
+
+        guard let format = targetFormat else {
+            throw NSError(domain: "AudioManager", code: -2, userInfo: [NSLocalizedDescriptionKey: "No readable audio files in soundpack"])
+        }
+
+        var buffersByKey: [UInt16: AVAudioPCMBuffer] = [:]
+        for (keyString, fileName) in keyFiles {
+            guard let keyCode = UInt16(keyString), let buffer = fileBuffers[fileName] else { continue }
+            buffersByKey[keyCode] = buffer
+        }
+
+        return LoadedSoundpack(format: format, buffers: buffersByKey)
+    }
+
+    private static func convertBuffer(_ source: AVAudioPCMBuffer, to targetFormat: AVAudioFormat) -> AVAudioPCMBuffer? {
+        guard let converter = AVAudioConverter(from: source.format, to: targetFormat) else { return nil }
+        let ratio = targetFormat.sampleRate / source.format.sampleRate
+        let outputCapacity = AVAudioFrameCount(Double(source.frameLength) * ratio) + 16
+        guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: outputCapacity) else {
+            return nil
+        }
+
+        var consumed = false
+        var error: NSError?
+        converter.convert(to: outputBuffer, error: &error) { _, outStatus in
+            if consumed {
+                outStatus.pointee = .endOfStream
+                return nil
+            }
+            consumed = true
+            outStatus.pointee = .haveData
+            return source
+        }
+        return error == nil ? outputBuffer : nil
+    }
+
     // MARK: - AVAudioEngine Management (audioQueue only)
 
     private static func configureEngineIfNeeded(for format: AVAudioFormat) {
@@ -232,22 +484,25 @@ class AudioManager {
         newEngine.connect(packMixer, to: eq, format: format)
         newEngine.connect(eq, to: newEngine.mainMixerNode, format: format)
 
-        var nodes: [AVAudioPlayerNode] = []
-        nodes.reserveCapacity(playerPoolSize)
+        var createdVoices: [PlayerVoice] = []
+        createdVoices.reserveCapacity(playerPoolSize)
         for _ in 0 ..< playerPoolSize {
-            let node = AVAudioPlayerNode()
-            newEngine.attach(node)
-            newEngine.connect(node, to: packMixer, format: format)
-            nodes.append(node)
+            let player = AVAudioPlayerNode()
+            let timePitch = AVAudioUnitTimePitch()
+            newEngine.attach(player)
+            newEngine.attach(timePitch)
+            newEngine.connect(player, to: timePitch, format: format)
+            newEngine.connect(timePitch, to: packMixer, format: format)
+            createdVoices.append(PlayerVoice(player: player, timePitch: timePitch))
         }
 
         engine = newEngine
         eqNode = eq
-        playerNodes = nodes
+        voices = createdVoices
         configuredFormat = format
-        nextNodeIndex = 0
+        nextVoiceIndex = 0
 
-        applyOutputDevice(currentOutputDevice)
+        applyOutputDevice(uid: currentOutputDeviceUID)
         applyGain()
 
         newEngine.prepare()
@@ -278,21 +533,21 @@ class AudioManager {
             NotificationCenter.default.removeObserver(observer)
             configObserver = nil
         }
-        for node in playerNodes {
-            node.stop()
+        for voice in voices {
+            voice.player.stop()
         }
         engine?.stop()
         engine = nil
         eqNode = nil
-        playerNodes = []
+        voices = []
         configuredFormat = nil
     }
 
-    private static func playBuffer(for keyCode: UInt16, from pack: LoadedSoundpack) {
+    private static func playBuffer(for keyCode: UInt16, from pack: LoadedSoundpack, isKeyUp: Bool) {
         guard let buffer = pack.buffers[keyCode] else { return }
 
         configureEngineIfNeeded(for: pack.format)
-        guard let currentEngine = engine, !playerNodes.isEmpty else { return }
+        guard let currentEngine = engine, !voices.isEmpty else { return }
 
         if !currentEngine.isRunning {
             do {
@@ -303,20 +558,34 @@ class AudioManager {
             }
         }
 
-        let node = playerNodes[nextNodeIndex]
-        nextNodeIndex = (nextNodeIndex + 1) % playerNodes.count
+        let voice = voices[nextVoiceIndex]
+        nextVoiceIndex = (nextVoiceIndex + 1) % voices.count
 
-        node.volume = min(currentVolume, 1.0)
-        node.scheduleBuffer(buffer, at: nil, options: .interrupts)
-        if !node.isPlaying {
-            node.play()
+        var baseVolume = min(currentVolume, 1.0)
+        var pitchCents: Float = 0.0
+
+        if isKeyUp {
+            baseVolume *= 0.42
+            pitchCents += 180.0
+        }
+
+        if soundVariationEnabled {
+            baseVolume = min(1.0, max(0.0, baseVolume * Float.random(in: 0.92 ... 1.08)))
+            pitchCents += Float.random(in: -35.0 ... 35.0)
+        }
+
+        voice.timePitch.pitch = pitchCents
+        voice.player.volume = baseVolume
+        voice.player.scheduleBuffer(buffer, at: nil, options: .interrupts)
+        if !voice.player.isPlaying {
+            voice.player.play()
         }
     }
 
     private static func applyGain() {
         let clampedNodeVolume = min(currentVolume, 1.0)
-        for node in playerNodes {
-            node.volume = clampedNodeVolume
+        for voice in voices {
+            voice.player.volume = clampedNodeVolume
         }
 
         guard let eq = eqNode else { return }
@@ -329,22 +598,15 @@ class AudioManager {
         }
     }
 
-    private static func applyOutputDevice(_ outputDevice: OutputDevice) {
+    private static func applyOutputDevice(uid: String) {
         guard let currentEngine = engine, let audioUnit = currentEngine.outputNode.audioUnit else {
             return
         }
 
-        let targetDeviceID: AudioDeviceID?
-        switch outputDevice {
-        case .any:
-            targetDeviceID = defaultOutputDeviceID()
-        case .headphones:
-            targetDeviceID = audioDeviceID(forUID: "BuiltInHeadphoneOutputDevice") ?? defaultOutputDeviceID()
-        case .speaker:
-            targetDeviceID = audioDeviceID(forUID: "BuiltInSpeakerDevice") ?? defaultOutputDeviceID()
-        }
+        let resolvedDeviceID = AudioDeviceManager.audioDeviceID(forUID: uid)
+            ?? AudioDeviceManager.defaultOutputDeviceID()
 
-        guard var deviceID = targetDeviceID else { return }
+        guard var deviceID = resolvedDeviceID else { return }
 
         let wasRunning = currentEngine.isRunning
         if wasRunning {
@@ -366,76 +628,5 @@ class AudioManager {
         if wasRunning {
             try? currentEngine.start()
         }
-    }
-
-    private static func defaultOutputDeviceID() -> AudioDeviceID? {
-        var deviceID = AudioDeviceID(0)
-        var propertySize = UInt32(MemoryLayout<AudioDeviceID>.size)
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-
-        let status = AudioObjectGetPropertyData(
-            AudioObjectID(kAudioObjectSystemObject),
-            &address,
-            0,
-            nil,
-            &propertySize,
-            &deviceID
-        )
-        return status == noErr ? deviceID : nil
-    }
-
-    private static func audioDeviceID(forUID uid: String) -> AudioDeviceID? {
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyDevices,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-
-        var propertySize: UInt32 = 0
-        guard AudioObjectGetPropertyDataSize(
-            AudioObjectID(kAudioObjectSystemObject),
-            &address,
-            0,
-            nil,
-            &propertySize
-        ) == noErr else {
-            return nil
-        }
-
-        let deviceCount = Int(propertySize) / MemoryLayout<AudioDeviceID>.size
-        var devices = [AudioDeviceID](repeating: 0, count: deviceCount)
-        guard AudioObjectGetPropertyData(
-            AudioObjectID(kAudioObjectSystemObject),
-            &address,
-            0,
-            nil,
-            &propertySize,
-            &devices
-        ) == noErr else {
-            return nil
-        }
-
-        var uidAddress = AudioObjectPropertyAddress(
-            mSelector: kAudioDevicePropertyDeviceUID,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-
-        for deviceID in devices {
-            var unmanagedUID: Unmanaged<CFString>?
-            var uidSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
-            let status = withUnsafeMutablePointer(to: &unmanagedUID) { pointer in
-                AudioObjectGetPropertyData(deviceID, &uidAddress, 0, nil, &uidSize, pointer)
-            }
-            if status == noErr, let cfUID = unmanagedUID?.takeRetainedValue(), (cfUID as String) == uid {
-                return deviceID
-            }
-        }
-
-        return nil
     }
 }

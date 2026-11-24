@@ -12,6 +12,9 @@
 		100D02F42C7A8B30006A5C1B /* AudioManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100D02F32C7A8B30006A5C1B /* AudioManager.swift */; };
 		100D02F62C7A8BCA006A5C1B /* EventManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100D02F52C7A8BCA006A5C1B /* EventManager.swift */; };
 		100E085F2C95A65F00F0DEA6 /* NotificationsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100E085E2C95A65F00F0DEA6 /* NotificationsManager.swift */; };
+		A1B2C3D42F00000100000002 /* AudioDeviceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D42F00000100000001 /* AudioDeviceManager.swift */; };
+		A1B2C3D42F00000200000002 /* CustomSoundpackManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D42F00000200000001 /* CustomSoundpackManager.swift */; };
+		A1B2C3D42F00000300000002 /* AutoMuteManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D42F00000300000001 /* AutoMuteManager.swift */; };
 		10117C072D517585002898FB /* eg-oreo.ogg in Resources */ = {isa = PBXBuildFile; fileRef = 10117C062D517585002898FB /* eg-oreo.ogg */; };
 		10117C1B2D517A18002898FB /* nk-cream.ogg in Resources */ = {isa = PBXBuildFile; fileRef = 10117C1A2D517A18002898FB /* nk-cream.ogg */; };
 		10174E7F2C7B4AB700A6AEE6 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10174E7E2C7B4AB700A6AEE6 /* MenuBarView.swift */; };
@@ -52,6 +55,9 @@
 		100D02F32C7A8B30006A5C1B /* AudioManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioManager.swift; sourceTree = "<group>"; };
 		100D02F52C7A8BCA006A5C1B /* EventManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventManager.swift; sourceTree = "<group>"; };
 		100E085E2C95A65F00F0DEA6 /* NotificationsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsManager.swift; sourceTree = "<group>"; };
+		A1B2C3D42F00000100000001 /* AudioDeviceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioDeviceManager.swift; sourceTree = "<group>"; };
+		A1B2C3D42F00000200000001 /* CustomSoundpackManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomSoundpackManager.swift; sourceTree = "<group>"; };
+		A1B2C3D42F00000300000001 /* AutoMuteManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoMuteManager.swift; sourceTree = "<group>"; };
 		10117C062D517585002898FB /* eg-oreo.ogg */ = {isa = PBXFileReference; lastKnownFileType = file; path = "eg-oreo.ogg"; sourceTree = "<group>"; };
 		10117C1A2D517A18002898FB /* nk-cream.ogg */ = {isa = PBXFileReference; lastKnownFileType = file; path = "nk-cream.ogg"; sourceTree = "<group>"; };
 		10174E7E2C7B4AB700A6AEE6 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
@@ -106,6 +112,9 @@
 				100D02F32C7A8B30006A5C1B /* AudioManager.swift */,
 				100D02F52C7A8BCA006A5C1B /* EventManager.swift */,
 				100E085E2C95A65F00F0DEA6 /* NotificationsManager.swift */,
+				A1B2C3D42F00000100000001 /* AudioDeviceManager.swift */,
+				A1B2C3D42F00000200000001 /* CustomSoundpackManager.swift */,
+				A1B2C3D42F00000300000001 /* AutoMuteManager.swift */,
 			);
 			path = Managers;
 			sourceTree = "<group>";
@@ -337,6 +346,9 @@
 				10FA0F252C7627D90056919B /* ContentView.swift in Sources */,
 				10FA0F322C762CD50056919B /* PermissionsView.swift in Sources */,
 				100E085F2C95A65F00F0DEA6 /* NotificationsManager.swift in Sources */,
+				A1B2C3D42F00000100000002 /* AudioDeviceManager.swift in Sources */,
+				A1B2C3D42F00000200000002 /* CustomSoundpackManager.swift in Sources */,
+				A1B2C3D42F00000300000002 /* AutoMuteManager.swift in Sources */,
 				10BAAC092C8C5FC20024E3E0 /* SettingsShortcutRecorder.swift in Sources */,
 				10D244392C87463E00D99C0C /* SettingsSlider.swift in Sources */,
 				100D02F22C7A8791006A5C1B /* PermissionsManager.swift in Sources */,

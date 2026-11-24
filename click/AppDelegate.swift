@@ -69,7 +69,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func start() {
-        AudioManager.loadSoundPack(Defaults[.soundpack])
+        AppState.shared.loadActiveSoundPack()
         EventManager.setupEventMonitors()
     }
 

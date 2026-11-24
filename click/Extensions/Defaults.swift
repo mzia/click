@@ -10,6 +10,7 @@ import Foundation
 
 extension Defaults.Keys {
     static let soundpack = Key<Soundpack>("soundpack", default: .egCrystalPurple)
+    static let selectedCustomSoundpackID = Key<String?>("selectedCustomSoundpackID", default: nil)
     static let launchAtLogin = Key<Bool>("launchAtLogin", default: false)
     static let startMinimized = Key<Bool>("startMinimized", default: false)
     static let volumePreset = Key<VolumePreset>("volume", default: .balanced)
@@ -17,4 +18,9 @@ extension Defaults.Keys {
     static let customVolume = Key<Float>("customVolume", default: 1)
     static let showNotifications = Key<Bool>("showNotifications", default: true)
     static let outputDevice = Key<OutputDevice>("outputDevice", default: .any)
+    static let selectedOutputDeviceUID = Key<String>("selectedOutputDeviceUID", default: "")
+    static let enableSoundVariation = Key<Bool>("enableSoundVariation", default: false)
+    static let enableKeyUpSound = Key<Bool>("enableKeyUpSound", default: false)
+    static let autoMuteOnMicrophone = Key<Bool>("autoMuteOnMicrophone", default: false)
+    static let excludedApps = Key<[ExcludedApp]>("excludedApps", default: [])
 }

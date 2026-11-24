@@ -10,6 +10,7 @@ import SwiftUI
 
 struct MenuBarView: View {
     @EnvironmentObject var appState: AppState
+    @ObservedObject private var customPacks = CustomSoundpackManager.shared
 
     var body: some View {
         Button {
@@ -23,6 +24,11 @@ struct MenuBarView: View {
         }
         .disabled(!appState.permissionsGranted)
         .keyboardShortcut("K", modifiers: [.command, .shift])
+
+        if appState.isActive, let reason = appState.autoMuteReason {
+            Text("Auto-muted: \(reason.description)")
+                .foregroundStyle(.secondary)
+        }
 
         Divider()
 
@@ -38,19 +44,38 @@ struct MenuBarView: View {
             Text("Volume")
         }
 
-        Picker(selection: $appState.soundpack) {
+        Menu {
             ForEach(Soundpack.allCases, id: \.self) { soundpack in
-                HStack {
-                    Text(soundpack.soundpack?.name ?? soundpack.rawValue)
+                Button {
+                    AudioManager.loadSoundPack(soundpack)
+                } label: {
+                    let isSelected = appState.selectedCustomSoundpackID == nil
+                        && appState.soundpack == soundpack
+                    if isSelected {
+                        Label(soundpack.soundpack?.name ?? soundpack.rawValue, systemImage: "checkmark")
+                    } else {
+                        Text(soundpack.soundpack?.name ?? soundpack.rawValue)
+                    }
                 }
-                .tag(soundpack)
+            }
+
+            if !customPacks.customPacks.isEmpty {
+                Divider()
+                ForEach(customPacks.customPacks) { pack in
+                    Button {
+                        AudioManager.loadCustomSoundPack(pack)
+                    } label: {
+                        if appState.selectedCustomSoundpackID == pack.id {
+                            Label(pack.name, systemImage: "checkmark")
+                        } else {
+                            Text(pack.name)
+                        }
+                    }
+                }
             }
         } label: {
             Image(systemName: "circle.fill")
             Text("Soundpack")
-        }
-        .onChange(of: appState.soundpack) { _, newValue in
-            AudioManager.loadSoundPack(newValue)
         }
 
         Divider()
