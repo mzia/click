@@ -13,10 +13,12 @@ struct PermissionsView: View {
             VStack {
                 Text("Authorize Click")
                     .font(.title.bold())
-                Text("Click needs you permission to work properly. Follow these steps to authorize it:")
+                Text("Click needs your permission to work properly. Follow these steps to authorize it:")
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.secondary)
                     .padding()
+                Button("Open Accessibility Settings", action: requestAndOpenSettings)
+                    .buttonStyle(.borderedProminent)
             }
             .frame(minWidth: 225)
             .padding()
@@ -29,9 +31,9 @@ struct PermissionsView: View {
                 HStack {
                     Text("1.")
                         .foregroundStyle(.secondary)
-                    Text("Open System Preferences")
+                    Text("Open System Settings")
                         .font(.title3.bold())
-                    Button(action: openSystemSettings) {
+                    Button(action: requestAndOpenSettings) {
                         Image(systemName: "arrow.up.forward.app.fill")
                             .foregroundStyle(.secondary)
                     }
@@ -66,7 +68,8 @@ struct PermissionsView: View {
         }
     }
 
-    func openSystemSettings() {
+    func requestAndOpenSettings() {
+        PermissionsManager.requestAccess()
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
             NSWorkspace.shared.open(url)
         }

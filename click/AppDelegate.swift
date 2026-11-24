@@ -59,8 +59,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             AppState.shared.isActive = false
         }
 
-        if PermissionsManager.getStatus() {
+        AppState.shared.syncAudioPlaybackSettings()
+
+        if AppState.shared.permissionsGranted {
             start()
+            AppState.shared.isActive = true
             NotificationsManager.requestPermission()
         }
     }

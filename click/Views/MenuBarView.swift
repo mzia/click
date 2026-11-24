@@ -21,7 +21,7 @@ struct MenuBarView: View {
                 Text("Enable Click")
             }
         }
-        .disabled(!PermissionsManager.getStatus())
+        .disabled(!appState.permissionsGranted)
         .keyboardShortcut("K", modifiers: [.command, .shift])
 
         Divider()
